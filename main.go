@@ -24,7 +24,7 @@ import (
 	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message/mail"
 	"github.com/gin-gonic/gin"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 //go:embed templates/*
@@ -127,7 +127,7 @@ const (
 
 func initDB() {
 	var err error
-	db, err = sql.Open("sqlite3", DBFile)
+	db, err = sql.Open("sqlite", DBFile)
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
