@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -113,9 +114,10 @@ var (
 	logsMutex        sync.Mutex
 	urlRegex         = regexp.MustCompile(`https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+`)
 	codeRegex        = regexp.MustCompile(`(?i)(?:验证码|校验码|动态码|验证|确认码|verification code|security code|auth code|\bcode\b)[\s:：\-\[【]*([a-zA-Z0-9]{4,8})\b`)
-	accountLastCheck sync.Map   // 记录每个账号最后的检查时间
-	accountChecking  sync.Map   // 防止同一个账号的 IMAP 检查并发
-	processingMutex  sync.Mutex // 防止并发处理待发送消息
+	accountLastCheck sync.Map                                  // 记录每个账号最后的检查时间
+	accountChecking  sync.Map                                  // 防止同一个账号的 IMAP 检查并发
+	processingMutex  sync.Mutex                                // 防止并发处理待发送消息
+	httpClient       = &http.Client{Timeout: 15 * time.Second} // 全局 Webhook 请求带超时的客户端
 )
 
 const (
@@ -204,19 +206,67 @@ func getMessages(status string, limit int, offset int) ([]Message, error) {
 	var messages []Message
 	for rows.Next() {
 		var msg Message
-		var sentAt sql.NullTime
-		err := rows.Scan(&msg.ID, &msg.SourceEmail, &msg.AccountID, &msg.Subject, &msg.From,
-			&msg.To, &msg.Date, &msg.Body, &msg.Status, &msg.TargetType, &msg.TargetName,
-			&msg.RetryCount, &msg.ErrorMessage, &msg.CreatedAt, &sentAt)
+		var nsSubject, nsFrom, nsTo, nsBody, nsTargetType, nsTargetName, nsErrorMsg, nsSourceEmail sql.NullString
+		var niRetryCount sql.NullInt64
+		var dateStr, createdAtStr string
+		var nsDate, nsCreatedAt, sentAtStr sql.NullString
+
+		err := rows.Scan(&msg.ID, &nsSourceEmail, &msg.AccountID, &nsSubject, &nsFrom,
+			&nsTo, &nsDate, &nsBody, &msg.Status, &nsTargetType, &nsTargetName,
+			&niRetryCount, &nsErrorMsg, &nsCreatedAt, &sentAtStr)
 		if err != nil {
 			return nil, err
 		}
-		if sentAt.Valid {
-			msg.SentAt = &sentAt.Time
+
+		msg.SourceEmail = nsSourceEmail.String
+		msg.Subject = nsSubject.String
+		msg.From = nsFrom.String
+		msg.To = nsTo.String
+		msg.Body = nsBody.String
+		msg.TargetType = nsTargetType.String
+		msg.TargetName = nsTargetName.String
+		msg.ErrorMessage = nsErrorMsg.String
+		msg.RetryCount = int(niRetryCount.Int64)
+
+		if nsDate.Valid {
+			dateStr = nsDate.String
 		}
+		if nsCreatedAt.Valid {
+			createdAtStr = nsCreatedAt.String
+		}
+
+		msg.Date = tryParseTime(dateStr)
+		msg.CreatedAt = tryParseTime(createdAtStr)
+		if sentAtStr.Valid && sentAtStr.String != "" {
+			t := tryParseTime(sentAtStr.String)
+			msg.SentAt = &t
+		}
+
 		messages = append(messages, msg)
 	}
 	return messages, nil
+}
+
+func tryParseTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	// 尝试常见的 SQLite 时间格式
+	formats := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05Z",
+		"2006-01-02T15:04:05Z",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 func getMessageStats() (map[string]int, error) {
@@ -382,7 +432,8 @@ func checkMailForAccount(account *EmailAccount) {
 		imapServer = imapServer + ":993"
 	}
 
-	c, err := client.DialTLS(imapServer, nil)
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	c, err := client.DialWithDialerTLS(dialer, imapServer, nil)
 	if err != nil {
 		addLog(fmt.Sprintf("IMAP连接失败 [%s]: %v", account.Name, err), "error")
 		return
@@ -434,7 +485,13 @@ func checkMailForAccount(account *EmailAccount) {
 				c.UidFetch(seqSet, items, messages)
 			}()
 
-			msg := <-messages
+			var msg *imap.Message
+			for m := range messages {
+				if msg == nil {
+					msg = m // 获取第一个拿去处理，剩下的强行消费完（防止 IMAP Server 返回多个对象导致 Channel 卡死 goroutine 泄露）
+				}
+			}
+
 			if msg == nil || msg.Envelope == nil {
 				continue
 			}
@@ -594,7 +651,7 @@ func sendToFeishu(webhookURL, subject, from, date, body string) error {
 
 		payload := map[string]interface{}{"msg_type": "interactive", "card": card}
 		jsonBody, _ := json.Marshal(payload)
-		resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
+		resp, err := httpClient.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
 		if err != nil {
 			return err
 		}
@@ -640,7 +697,7 @@ func sendToSlack(webhookURL, subject, from, date, body string) error {
 		},
 	}
 	jsonBody, _ := json.Marshal(payload)
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
+	resp, err := httpClient.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return err
 	}
@@ -674,7 +731,7 @@ func sendToDiscord(webhookURL, subject, from, date, body string) error {
 		},
 	}
 	jsonBody, _ := json.Marshal(payload)
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
+	resp, err := httpClient.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return err
 	}
@@ -694,7 +751,7 @@ func sendToCustomWebhook(webhookURL, subject, from, date, body string) error {
 		"body":    body,
 	}
 	jsonBody, _ := json.Marshal(payload)
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
+	resp, err := httpClient.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return err
 	}
@@ -718,7 +775,7 @@ func sendToDingTalk(webhookURL, subject, from, date, body string) error {
 		},
 	}
 	jsonBody, _ := json.Marshal(payload)
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
+	resp, err := httpClient.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return err
 	}
@@ -743,7 +800,7 @@ func sendToWeCom(webhookURL, subject, from, date, body string) error {
 		},
 	}
 	jsonBody, _ := json.Marshal(payload)
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
+	resp, err := httpClient.Post(webhookURL, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return err
 	}
@@ -1006,7 +1063,8 @@ func setupAPI(r *gin.Engine) {
 			imapServer = imapServer + ":993"
 		}
 
-		clientImap, err := client.DialTLS(imapServer, nil)
+		dialer := &net.Dialer{Timeout: 10 * time.Second}
+		clientImap, err := client.DialWithDialerTLS(dialer, imapServer, nil)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("连接服务器失败: %v", err)})
 			return
