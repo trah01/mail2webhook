@@ -1,0 +1,12 @@
+.git
+.last_email_id
+.last_email_ids
+.history
+*.log
+email2feishu
+mail2webhook
+messages.db
+messages.db-shm
+messages.db-wal
+config.json
+.DS_Store

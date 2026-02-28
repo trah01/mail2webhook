@@ -5,16 +5,15 @@
 
 # Build and Dependencies
 email2feishu
+mail2webhook
 *.exe
 *.out
 *.app
-go.sum
 
 # Environments and Secrets
 config.json
 .env
 .last_email_id
-.dockerignore
 
 # Database files
 *.db
