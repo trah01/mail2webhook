@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Hub - 邮件转发中心</title>
+    <style>
+        /* ===================== Apple + Fluent Design Variables ===================== */
+        :root {
+            /* System Colors - Apple Style */
+            --accent: #007AFF;
+            --accent-hover: #0056CC;
+            --success: #34C759;
+            --warning: #FF9500;
+            --error: #FF3B30;
+            --info: #5AC8FA;
+
+            /* Text Colors - Black & White */
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --text-tertiary: #aeaeb2;
+
+            /* Surfaces - Pure White */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f7;
+            --bg-tertiary: #e8e8ed;
+            --card-bg: #ffffff;
+            --card-border: rgba(0, 0, 0, 0.08);
+            --hover-bg: rgba(0, 0, 0, 0.04);
+            --active-bg: rgba(0, 0, 0, 0.08);
+            --divider: rgba(0, 0, 0, 0.1);
+
+            /* Effects - Fluent/Acrylic */
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.12);
+            --radius-sm: 10px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+
+            /* Typography */
+            --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* ===================== Base Styles ===================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background: var(--bg-secondary);
+            min-height: 100vh;
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ===================== Navigation ===================== */
+        .nav-container {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 1px solid var(--divider);
+        }
+
+        .nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            height: 52px;
+        }
+
+        .nav-brand {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: -0.02em;
+        }
+
+        .nav-brand svg {
+            width: 24px;
+            height: 24px;
+            color: var(--text-primary);
+        }
+
+        .nav-tabs {
+            display: flex;
+            margin-left: 40px;
+            gap: 0;
+        }
+
+        .nav-tab {
+            padding: 8px 14px;
+            border: none;
+            background: transparent;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .nav-tab:hover {
+            color: var(--text-primary);
+            background: var(--hover-bg);
+        }
+
+        .nav-tab.active {
+            color: var(--accent);
+            background: transparent;
+        }
+
+        .nav-status {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.6;
+                transform: scale(1.2);
+            }
+        }
+
+        /* ===================== Main Layout ===================== */
+        .main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+            animation: fadeIn 0.25s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ===================== Cards ===================== */
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--card-border);
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--divider);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .card-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
+        }
+
+        .card-body {
+            padding: 0;
+        }
+
+        /* ===================== Stats Grid ===================== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--card-border);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .stat-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .stat-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .stat-icon.blue {
+            background: rgba(0, 122, 255, 0.12);
+            color: var(--accent);
+        }
+
+        .stat-icon.green {
+            background: rgba(52, 199, 89, 0.12);
+            color: var(--success);
+        }
+
+        .stat-icon.red {
+            background: rgba(255, 59, 48, 0.12);
+            color: var(--error);
+        }
+
+        .stat-icon.orange {
+            background: rgba(255, 149, 0, 0.12);
+            color: var(--warning);
+        }
+
+        .stat-content h3 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.03em;
+            line-height: 1;
+        }
+
+        .stat-content p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        /* ===================== Buttons ===================== */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+            font-family: var(--font-family);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--divider);
+        }
+
+        .btn-danger {
+            background: rgba(255, 59, 48, 0.1);
+            color: var(--error);
+        }
+
+        .btn-danger:hover {
+            background: rgba(255, 59, 48, 0.2);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+        }
+
+        .btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* ===================== Tables ===================== */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 14px 20px;
+            text-align: left;
+        }
+
+        th {
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            background: var(--bg-secondary);
+        }
+
+        td {
+            border-bottom: 1px solid var(--divider);
+            font-size: 0.9rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: var(--hover-bg);
+        }
+
+        /* ===================== Forms ===================== */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            font-size: 0.95rem;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+            font-family: var(--font-family);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-tertiary);
+        }
+
+        select.form-input {
+            cursor: pointer;
+        }
+
+        textarea.form-input {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .form-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        .form-checkbox input {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent);
+        }
+
+        /* ===================== Tags ===================== */
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+        }
+
+        .tag-success {
+            background: rgba(52, 199, 89, 0.12);
+            color: var(--success);
+        }
+
+        .tag-warning {
+            background: rgba(255, 149, 0, 0.12);
+            color: #c93400;
+        }
+
+        .tag-error {
+            background: rgba(255, 59, 48, 0.12);
+            color: var(--error);
+        }
+
+        .tag-info {
+            background: rgba(0, 122, 255, 0.12);
+            color: var(--accent);
+        }
+
+        .tag-neutral {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        /* ===================== Empty State ===================== */
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state svg {
+            width: 48px;
+            height: 48px;
+            color: var(--text-tertiary);
+            margin-bottom: 16px;
+        }
+
+        .empty-state h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .empty-state p {
+            font-size: 0.9rem;
+        }
+
+        /* ===================== Modal ===================== */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            max-width: 520px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--divider);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        .modal-close {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            transition: background 0.15s ease;
+        }
+
+        .modal-close:hover {
+            background: var(--hover-bg);
+        }
+
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--divider);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: var(--bg-secondary);
+        }
+
+        /* ===================== Log List ===================== */
+        .log-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .log-item {
+            padding: 14px 24px;
+            border-bottom: 1px solid var(--divider);
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .log-item:last-child {
+            border-bottom: none;
+        }
+
+        .log-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .log-icon svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .log-icon.info {
+            background: rgba(0, 122, 255, 0.12);
+            color: var(--accent);
+        }
+
+        .log-icon.success {
+            background: rgba(52, 199, 89, 0.12);
+            color: var(--success);
+        }
+
+        .log-icon.error {
+            background: rgba(255, 59, 48, 0.12);
+            color: var(--error);
+        }
+
+        .log-icon.warning {
+            background: rgba(255, 149, 0, 0.12);
+            color: #c93400;
+        }
+
+        .log-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .log-time {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .log-message {
+            font-size: 0.875rem;
+            margin-top: 4px;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+
+        /* ===================== History List ===================== */
+        .history-item {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--divider);
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .history-item:hover {
+            background: var(--hover-bg);
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .history-subject {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .history-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 0.825rem;
+            color: var(--text-secondary);
+        }
+
+        .history-meta span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .history-meta svg {
+            width: 14px;
+            height: 14px;
+            color: var(--text-tertiary);
+        }
+
+        /* ===================== Scrollbar ===================== */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        /* ===================== Responsive ===================== */
+        @media (max-width: 900px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-tabs {
+                display: none;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="nav-container">
+        <div class="nav">
+            <div class="nav-brand">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2" />
+                    <path d="M22 7l-10 7L2 7" />
+                </svg>
+                Email Hub
+            </div>
+
+            <div class="nav-tabs">
+                <button class="nav-tab active" data-page="dashboard">仪表盘</button>
+                <button class="nav-tab" data-page="accounts">邮箱账号</button>
+                <button class="nav-tab" data-page="webhooks">Webhook</button>
+                <button class="nav-tab" data-page="rules">转发规则</button>
+                <button class="nav-tab" data-page="history">历史记录</button>
+            </div>
+
+            <div class="nav-status">
+                <span class="status-dot"></span>
+                <span>运行中</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Dashboard Page -->
+        <div id="dashboard" class="page active">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="stat-pending">0</h3>
+                        <p>待发送</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="stat-sent">0</h3>
+                        <p>已发送</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon red">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="15" y1="9" x2="9" y2="15" />
+                            <line x1="9" y1="9" x2="15" y2="15" />
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="stat-failed">0</h3>
+                        <p>发送失败</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                            <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="stat-accounts">0</h3>
+                        <p>邮箱账号</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" style="display: flex; gap: 16px;">
+                    <div style="display:flex; align-items:center; gap: 12px; flex:1">
+                        <h2 class="card-title">实时日志</h2>
+                        <span id="global-last-check"
+                            style="font-size: 0.8rem; color: var(--text-secondary); background: var(--bg-secondary); padding: 4px 10px; border-radius: 12px; font-weight: 500; border: 1px solid var(--card-border); display: inline-flex; align-items: center; gap: 6px;">
+                            <span class="status-dot"></span>
+                            系统监测中
+                        </span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="clearLogs()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+                            </path>
+                        </svg>
+                        清空日志
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="logs" class="log-list">
+                        <div class="empty-state">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                                <line x1="16" y1="13" x2="8" y2="13" />
+                                <line x1="16" y1="17" x2="8" y2="17" />
+                            </svg>
+                            <h3>暂无日志</h3>
+                            <p>系统运行日志将在此显示</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Accounts Page -->
+        <div id="accounts" class="page">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">邮箱账号管理</h2>
+                    <button class="btn btn-primary" onclick="openAccountModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        添加账号
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>邮箱地址</th>
+                                    <th>IMAP 服务器</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="accounts-table">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Webhooks Page -->
+        <div id="webhooks" class="page">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Webhook 目标管理</h2>
+                    <button class="btn btn-primary" onclick="openWebhookModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        添加 Webhook
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>类型</th>
+                                    <th>URL</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="webhooks-table">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rules Page -->
+        <div id="rules" class="page">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">转发规则</h2>
+                    <button class="btn btn-primary" onclick="openRuleModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        添加规则
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>规则名称</th>
+                                    <th>源邮箱</th>
+                                    <th>目标 Webhook</th>
+                                    <th>关键词过滤</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rules-table">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Page -->
+        <div id="history" class="page">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">转发历史记录</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <select class="form-input" style="width: auto;" id="history-filter" onchange="loadHistory()">
+                            <option value="">全部状态</option>
+                            <option value="pending">待发送</option>
+                            <option value="sent">已发送</option>
+                            <option value="failed">发送失败</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="history-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Account Modal -->
+    <div id="account-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="account-modal-title">添加邮箱账号</h3>
+                <button class="modal-close" onclick="closeModal('account-modal')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="account-form">
+                    <input type="hidden" id="account-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">账号名称</label>
+                            <input type="text" class="form-input" id="account-name" placeholder="例如：工作邮箱">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">邮箱地址</label>
+                            <input type="email" class="form-input" id="account-email" placeholder="user@example.com">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">IMAP 服务器</label>
+                            <input type="text" class="form-input" id="account-imap-host" placeholder="imap.example.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">端口</label>
+                            <input type="number" class="form-input" id="account-imap-port" value="993" min="1"
+                                max="65535">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">密码/授权码</label>
+                        <input type="password" class="form-input" id="account-pass" placeholder="邮箱密码或授权码">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">检查间隔 (秒)</label>
+                            <input type="number" class="form-input" id="account-interval" value="60" min="15">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">过滤模式</label>
+                            <select class="form-input" id="account-filter-mode">
+                                <option value="none">不过滤</option>
+                                <option value="whitelist">白名单</option>
+                                <option value="blacklist">黑名单</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">过滤列表 (每行一个邮箱/域名)</label>
+                        <textarea class="form-input" id="account-filter-list" rows="3" placeholder="example.com
+spam@mail.com"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label"
+                            style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>监听文件夹 (逗号分隔，默认 INBOX)</span>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="testAccountFolders()"
+                                id="btn-test-folders">获取可用文件夹</button>
+                        </label>
+                        <input type="text" class="form-input" id="account-folders" placeholder="INBOX, Sent">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" id="account-enabled" checked>
+                            <span>启用此账号</span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('account-modal')">取消</button>
+                <button class="btn btn-primary" onclick="saveAccount()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webhook Modal -->
+    <div id="webhook-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="webhook-modal-title">添加 Webhook</h3>
+                <button class="modal-close" onclick="closeModal('webhook-modal')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="webhook-form">
+                    <input type="hidden" id="webhook-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">名称</label>
+                            <input type="text" class="form-input" id="webhook-name" placeholder="例如：团队通知群">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">类型</label>
+                            <select class="form-input" id="webhook-type">
+                                <option value="feishu">飞书</option>
+                                <option value="dingtalk">钉钉</option>
+                                <option value="wecom">企业微信</option>
+                                <option value="slack">Slack</option>
+                                <option value="discord">Discord</option>
+                                <option value="custom">自定义</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Webhook URL</label>
+                        <input type="url" class="form-input" id="webhook-url" placeholder="https://...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" id="webhook-enabled" checked>
+                            <span>启用此 Webhook</span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('webhook-modal')">取消</button>
+                <button class="btn btn-primary" onclick="saveWebhook()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rule Modal -->
+    <div id="rule-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="rule-modal-title">添加转发规则</h3>
+                <button class="modal-close" onclick="closeModal('rule-modal')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="rule-form">
+                    <input type="hidden" id="rule-id">
+                    <div class="form-group">
+                        <label class="form-label">规则名称</label>
+                        <input type="text" class="form-input" id="rule-name" placeholder="例如：工作邮件转发">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">源邮箱账号</label>
+                            <select class="form-input" id="rule-source">
+                                <option value="all">所有账号</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">目标 Webhook</label>
+                            <select class="form-input" id="rule-target">
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">关键词过滤 (逗号分隔，留空表示不过滤)</label>
+                        <input type="text" class="form-input" id="rule-filters" placeholder="重要, 紧急, 报告">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" id="rule-enabled" checked>
+                            <span>启用此规则</span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('rule-modal')">取消</button>
+                <button class="btn btn-primary" onclick="saveRule()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===================== State =====================
+        let accounts = [];
+        let webhooks = [];
+        let rules = [];
+        let logs = [];
+        let lastChecks = {};
+
+        // ===================== Navigation =====================
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.page).classList.add('active');
+
+                // Load data for the page
+                switch (tab.dataset.page) {
+                    case 'accounts': loadAccounts(); break;
+                    case 'webhooks': loadWebhooks(); break;
+                    case 'rules': loadRules(); break;
+                    case 'history': loadHistory(); break;
+                }
+            });
+        });
+
+        // ===================== API Calls =====================
+        async function api(method, path, data) {
+            const opts = { method };
+            if (data) {
+                opts.headers = { 'Content-Type': 'application/json' };
+                opts.body = JSON.stringify(data);
+            }
+            const res = await fetch(path, opts);
+            return res.json();
+        }
+
+        // ===================== Dashboard =====================
+        async function loadStats() {
+            try {
+                const stats = await api('GET', '/api/stats');
+                document.getElementById('stat-pending').textContent = stats?.pending || 0;
+                document.getElementById('stat-sent').textContent = stats?.sent || 0;
+                document.getElementById('stat-failed').textContent = stats?.failed || 0;
+
+                const accData = await api('GET', '/api/accounts');
+                document.getElementById('stat-accounts').textContent = (accData && Array.isArray(accData)) ? accData.length : 0;
+
+                // 更新最后检查时间状态
+                if (stats?.last_checks) {
+                    lastChecks = stats.last_checks;
+                    const times = Object.values(lastChecks);
+                    if (times.length > 0) {
+                        times.sort().reverse();
+                        const timeStr = times[0].split(' ')[1] || times[0];
+                        document.getElementById('global-last-check').innerHTML = `<span class="status-dot"></span>最后检查于 ${timeStr}`;
+                    }
+
+                    if (document.getElementById('accounts').classList.contains('active')) {
+                        renderAccounts();
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        async function loadLogs() {
+            try {
+                logs = await api('GET', '/api/logs');
+                if (!logs || !Array.isArray(logs)) logs = [];
+                renderLogs();
+            } catch (e) {
+                console.error('Failed to load logs:', e);
+                logs = [];
+                renderLogs();
+            }
+        }
+
+        function renderLogs() {
+            const container = document.getElementById('logs');
+            if (!logs || logs.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                        </svg>
+                        <h3>暂无日志</h3>
+                        <p>系统运行日志将在此显示</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const iconMap = {
+                info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+                success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
+                error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+                warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+            };
+
+            container.innerHTML = logs.map(log => `
+                <div class="log-item">
+                    <div class="log-icon ${log.type}">${iconMap[log.type] || iconMap.info}</div>
+                    <div class="log-content">
+                        <div class="log-time">${log.time}</div>
+                        <div class="log-message">${log.message}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function clearLogs() {
+            logs = [];
+            renderLogs();
+        }
+
+        // ===================== Accounts =====================
+        async function loadAccounts() {
+            try {
+                accounts = await api('GET', '/api/accounts');
+                if (!accounts || !Array.isArray(accounts)) accounts = [];
+                renderAccounts();
+            } catch (e) {
+                console.error('Failed to load accounts:', e);
+                accounts = [];
+                renderAccounts();
+            }
+        }
+
+        function renderAccounts() {
+            const tbody = document.getElementById('accounts-table');
+            if (!accounts || accounts.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            暂无邮箱账号，点击上方按钮添加
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = accounts.map(acc => {
+                const checkTime = lastChecks[acc.id];
+                const checkDisplay = checkTime ? checkTime.split(' ')[1] : '尚未检查';
+                return `
+                <tr>
+                    <td>
+                        <strong>${escapeHtml(acc.name)}</strong>
+                        <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            ${checkDisplay}
+                        </div>
+                    </td>
+                    <td>${escapeHtml(acc.email_user)}</td>
+                    <td>${escapeHtml(acc.imap_server)}</td>
+                    <td>
+                        <span class="tag ${acc.enabled ? 'tag-success' : 'tag-neutral'}">
+                            ${acc.enabled ? '已启用' : '已禁用'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="editAccount('${acc.id}')">编辑</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteAccount('${acc.id}')">删除</button>
+                    </td>
+                </tr>
+            `}).join('');
+        }
+
+        function openAccountModal(data = null) {
+            document.getElementById('account-modal-title').textContent = data ? '编辑邮箱账号' : '添加邮箱账号';
+            document.getElementById('account-id').value = data?.id || '';
+            document.getElementById('account-name').value = data?.name || '';
+            document.getElementById('account-email').value = data?.email_user || '';
+            // 解析IMAP服务器地址
+            const imapServer = data?.imap_server || '';
+            if (imapServer.includes(':')) {
+                const [host, port] = imapServer.split(':');
+                document.getElementById('account-imap-host').value = host;
+                document.getElementById('account-imap-port').value = port;
+            } else {
+                document.getElementById('account-imap-host').value = imapServer;
+                document.getElementById('account-imap-port').value = '993';
+            }
+            document.getElementById('account-pass').value = data?.email_pass || '';
+            document.getElementById('account-interval').value = data?.check_interval || 60;
+            document.getElementById('account-folders').value = (data?.folders || ['INBOX']).join(', ');
+            document.getElementById('account-filter-mode').value = data?.filter_mode || 'none';
+            document.getElementById('account-filter-list').value = (data?.filter_mode === 'blacklist' ? (data?.blacklist || []) : (data?.whitelist || [])).join('\n');
+            document.getElementById('account-enabled').checked = data?.enabled !== false;
+            document.getElementById('account-modal').classList.add('active');
+        }
+
+        function editAccount(id) {
+            const acc = accounts.find(a => a.id === id);
+            if (acc) openAccountModal(acc);
+        }
+
+        function getAccountFormData() {
+            const id = document.getElementById('account-id').value;
+            const filterMode = document.getElementById('account-filter-mode').value;
+            const filterList = document.getElementById('account-filter-list').value
+                .split('\n')
+                .map(s => s.trim())
+                .filter(s => s);
+            const foldersList = document.getElementById('account-folders').value
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s);
+
+            const imapHost = document.getElementById('account-imap-host').value.trim();
+            const imapPort = document.getElementById('account-imap-port').value || '993';
+            const data = {
+                id: id || undefined,
+                name: document.getElementById('account-name').value,
+                email_user: document.getElementById('account-email').value,
+                imap_server: imapHost + ':' + imapPort,
+                email_pass: document.getElementById('account-pass').value,
+                check_interval: parseInt(document.getElementById('account-interval').value) || 60,
+                folders: foldersList.length > 0 ? foldersList : ['INBOX'],
+                filter_mode: filterMode,
+                whitelist: filterMode === 'whitelist' ? filterList : [],
+                blacklist: filterMode === 'blacklist' ? filterList : [],
+                enabled: document.getElementById('account-enabled').checked
+            };
+            return data;
+        }
+
+        async function saveAccount() {
+            const id = document.getElementById('account-id').value;
+            const data = getAccountFormData();
+
+            try {
+                if (id) {
+                    await api('PUT', `/api/accounts/${id}`, data);
+                } else {
+                    await api('POST', '/api/accounts', data);
+                }
+                closeModal('account-modal');
+                loadAccounts();
+                loadStats();
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        }
+
+        async function testAccountFolders() {
+            const btn = document.getElementById('btn-test-folders');
+            const originalText = btn.textContent;
+            btn.textContent = '连接中...';
+            btn.disabled = true;
+
+            try {
+                const data = getAccountFormData();
+                const res = await api('POST', '/api/test-imap', data);
+                if (res.error) {
+                    alert('获取失败: ' + res.error);
+                } else if (res.folders) {
+                    const foldersList = res.folders.join('\n');
+                    alert(`连接成功！\n此邮箱账号共有 ${res.folders.length} 个文件夹：\n\n${foldersList}\n\n您可以将需要的文件夹名称填入输入框中，多个请用逗号分隔。`);
+                }
+            } catch (e) {
+                alert('网络或服务异常: ' + e.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function deleteAccount(id) {
+            if (!confirm('确定要删除此邮箱账号吗？')) return;
+            try {
+                await api('DELETE', `/api/accounts/${id}`);
+                loadAccounts();
+                loadStats();
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+
+        // ===================== Webhooks =====================
+        async function loadWebhooks() {
+            try {
+                webhooks = await api('GET', '/api/webhooks');
+                if (!webhooks || !Array.isArray(webhooks)) webhooks = [];
+                renderWebhooks();
+            } catch (e) {
+                console.error('Failed to load webhooks:', e);
+                webhooks = [];
+                renderWebhooks();
+            }
+        }
+
+        function renderWebhooks() {
+            const tbody = document.getElementById('webhooks-table');
+            if (!webhooks || webhooks.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            暂无 Webhook，点击上方按钮添加
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            const typeNames = {
+                feishu: '飞书',
+                dingtalk: '钉钉',
+                wecom: '企业微信',
+                slack: 'Slack',
+                discord: 'Discord',
+                custom: '自定义'
+            };
+
+            tbody.innerHTML = webhooks.map(wh => `
+                <tr>
+                    <td><strong>${escapeHtml(wh.name)}</strong></td>
+                    <td><span class="tag tag-info">${typeNames[wh.type] || wh.type}</span></td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
+                        ${escapeHtml(wh.url.substring(0, 40))}${wh.url.length > 40 ? '...' : ''}
+                    </td>
+                    <td>
+                        <span class="tag ${wh.enabled ? 'tag-success' : 'tag-neutral'}">
+                            ${wh.enabled ? '已启用' : '已禁用'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="testWebhook('${wh.id}')">测试</button>
+                        <button class="btn btn-secondary btn-sm" onclick="editWebhook('${wh.id}')">编辑</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteWebhook('${wh.id}')">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openWebhookModal(data = null) {
+            document.getElementById('webhook-modal-title').textContent = data ? '编辑 Webhook' : '添加 Webhook';
+            document.getElementById('webhook-id').value = data?.id || '';
+            document.getElementById('webhook-name').value = data?.name || '';
+            document.getElementById('webhook-type').value = data?.type || 'feishu';
+            document.getElementById('webhook-url').value = data?.url || '';
+            document.getElementById('webhook-enabled').checked = data?.enabled !== false;
+            document.getElementById('webhook-modal').classList.add('active');
+        }
+
+        function editWebhook(id) {
+            const wh = webhooks.find(w => w.id === id);
+            if (wh) openWebhookModal(wh);
+        }
+
+        async function saveWebhook() {
+            const id = document.getElementById('webhook-id').value;
+            const data = {
+                id: id || undefined,
+                name: document.getElementById('webhook-name').value,
+                type: document.getElementById('webhook-type').value,
+                url: document.getElementById('webhook-url').value,
+                enabled: document.getElementById('webhook-enabled').checked
+            };
+
+            try {
+                if (id) {
+                    await api('PUT', `/api/webhooks/${id}`, data);
+                } else {
+                    await api('POST', '/api/webhooks', data);
+                }
+                closeModal('webhook-modal');
+                loadWebhooks();
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        }
+
+        async function deleteWebhook(id) {
+            if (!confirm('确定要删除此 Webhook 吗？')) return;
+            try {
+                await api('DELETE', `/api/webhooks/${id}`);
+                loadWebhooks();
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+
+        async function testWebhook(id) {
+            try {
+                const result = await api('POST', `/api/webhooks/${id}/test`);
+                if (result.success) {
+                    alert('测试发送成功！');
+                } else {
+                    alert('测试发送失败: ' + result.error);
+                }
+            } catch (e) {
+                alert('测试失败: ' + e.message);
+            }
+        }
+
+        // ===================== Rules =====================
+        async function loadRules() {
+            try {
+                rules = await api('GET', '/api/rules');
+                if (!rules || !Array.isArray(rules)) rules = [];
+                renderRules();
+            } catch (e) {
+                console.error('Failed to load rules:', e);
+                rules = [];
+                renderRules();
+            }
+        }
+
+        function renderRules() {
+            const tbody = document.getElementById('rules-table');
+            if (!rules || rules.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            暂无转发规则，点击上方按钮添加
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = rules.map(rule => {
+                const acc = accounts.find(a => a.id === rule.source_account);
+                const wh = webhooks.find(w => w.id === rule.target_webhook);
+                return `
+                    <tr>
+                        <td><strong>${escapeHtml(rule.name)}</strong></td>
+                        <td>${rule.source_account === 'all' ? '所有账号' : (acc?.name || '未知')}</td>
+                        <td>${wh?.name || '未知'}</td>
+                        <td>${rule.filters?.length ? rule.filters.map(f => `<span class="tag tag-neutral">${escapeHtml(f)}</span>`).join(' ') : '无'}</td>
+                        <td>
+                            <span class="tag ${rule.enabled ? 'tag-success' : 'tag-neutral'}">
+                                ${rule.enabled ? '已启用' : '已禁用'}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-secondary btn-sm" onclick="editRule('${rule.id}')">编辑</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteRule('${rule.id}')">删除</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openRuleModal(data = null) {
+            // Populate selects
+            const sourceSelect = document.getElementById('rule-source');
+            sourceSelect.innerHTML = '<option value="all">所有账号</option>' +
+                accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+
+            const targetSelect = document.getElementById('rule-target');
+            targetSelect.innerHTML = webhooks.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
+
+            document.getElementById('rule-modal-title').textContent = data ? '编辑转发规则' : '添加转发规则';
+            document.getElementById('rule-id').value = data?.id || '';
+            document.getElementById('rule-name').value = data?.name || '';
+            document.getElementById('rule-source').value = data?.source_account || 'all';
+            document.getElementById('rule-target').value = data?.target_webhook || '';
+            document.getElementById('rule-filters').value = (data?.filters || []).join(', ');
+            document.getElementById('rule-enabled').checked = data?.enabled !== false;
+            document.getElementById('rule-modal').classList.add('active');
+        }
+
+        function editRule(id) {
+            const rule = rules.find(r => r.id === id);
+            if (rule) openRuleModal(rule);
+        }
+
+        async function saveRule() {
+            const id = document.getElementById('rule-id').value;
+            const data = {
+                id: id || undefined,
+                name: document.getElementById('rule-name').value,
+                source_account: document.getElementById('rule-source').value,
+                target_webhook: document.getElementById('rule-target').value,
+                filters: document.getElementById('rule-filters').value
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(s => s),
+                enabled: document.getElementById('rule-enabled').checked
+            };
+
+            try {
+                if (id) {
+                    await api('PUT', `/api/rules/${id}`, data);
+                } else {
+                    await api('POST', '/api/rules', data);
+                }
+                closeModal('rule-modal');
+                loadRules();
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        }
+
+        async function deleteRule(id) {
+            if (!confirm('确定要删除此转发规则吗？')) return;
+            try {
+                await api('DELETE', `/api/rules/${id}`);
+                loadRules();
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+
+        // ===================== History =====================
+        async function loadHistory() {
+            try {
+                const status = document.getElementById('history-filter').value;
+                const messages = await api('GET', `/api/messages?status=${status}`);
+                renderHistory(messages || []);
+            } catch (e) {
+                console.error('Failed to load history:', e);
+                renderHistory([]);
+            }
+        }
+
+        function renderHistory(messages) {
+            const container = document.getElementById('history-list');
+            if (!messages || messages.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <h3>暂无转发记录</h3>
+                        <p>邮件转发记录将在此显示</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const statusTags = {
+                pending: '<span class="tag tag-warning">待发送</span>',
+                sent: '<span class="tag tag-success">已发送</span>',
+                failed: '<span class="tag tag-error">发送失败</span>'
+            };
+
+            container.innerHTML = messages.map(msg => `
+                <div class="history-item">
+                    <div class="history-header">
+                        <span class="history-subject">${escapeHtml(msg.subject || '(无主题)')}</span>
+                        ${statusTags[msg.status] || ''}
+                    </div>
+                    <div class="history-meta">
+                        <span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                            ${escapeHtml(msg.from)}
+                        </span>
+                        <span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                            ${escapeHtml(msg.source_email)}
+                        </span>
+                        <span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            ${msg.target_name || '-'}
+                        </span>
+                        <span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            ${formatDate(msg.created_at)}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ===================== Utilities =====================
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            return d.toLocaleString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Close modal on overlay click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove('active');
+                }
+            });
+        });
+
+        // ===================== Initialize =====================
+        loadStats();
+        loadLogs();
+        loadAccounts();
+        loadWebhooks();
+        loadRules();
+
+        // Auto refresh
+        setInterval(loadLogs, 5000);
+        setInterval(loadStats, 10000);
+    </script>
+</body>
+
+</html>

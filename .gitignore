@@ -1,0 +1,28 @@
+# OS and IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Build and Dependencies
+email2feishu
+*.exe
+*.out
+*.app
+go.sum
+
+# Environments and Secrets
+config.json
+.env
+.last_email_id
+.dockerignore
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+messages.db
+messages.db-shm
+messages.db-wal
+
+# Log files
+*.log

@@ -1,0 +1,40 @@
+{
+  "accounts": [
+    {
+      "id": "acc_17700000000",
+      "name": "example",
+      "imap_server": "imap.qq.com:993",
+      "email_user": "your_email@qq.com",
+      "email_pass": "your_auth_code_here",
+      "enabled": true,
+      "check_interval": 30,
+      "folders": [
+        "INBOX"
+      ],
+      "filter_mode": "none",
+      "whitelist": [],
+      "blacklist": []
+    }
+  ],
+  "webhooks": [
+    {
+      "id": "wh_17700000000",
+      "name": "通知群",
+      "type": "feishu",
+      "url": "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR-WEBHOOK-TOKEN",
+      "enabled": true
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule_17700000000",
+      "name": "转发全部",
+      "source_account": "all",
+      "target_webhook": "wh_17700000000",
+      "filters": [],
+      "enabled": true
+    }
+  ],
+  "default_interval": 60,
+  "max_retries": 3
+}

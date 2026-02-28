@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  mail2webhook:
+    image: trah01/mail2webhook:latest
+    container_name: mail2webhook
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.json:/app/config.json
+      - ./messages.db:/app/messages.db
+    environment:
+      - TZ=Asia/Shanghai  # 设置时区，确保日志和定时任务时间准确
+    restart: unless-stopped
