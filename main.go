@@ -985,6 +985,18 @@ func setupAPI(r *gin.Engine) {
 			return
 		}
 
+		// 恢复密码掩码（用户直接在编辑界面点测试的时候传过来的是 ********）
+		if account.EmailPass == "********" && account.ID != "" {
+			configLock.RLock()
+			for _, acc := range config.Accounts {
+				if acc.ID == account.ID {
+					account.EmailPass = acc.EmailPass
+					break
+				}
+			}
+			configLock.RUnlock()
+		}
+
 		imapServer := account.ImapServer
 		if !strings.Contains(imapServer, ":") {
 			imapServer = imapServer + ":993"
