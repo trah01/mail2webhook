@@ -1780,10 +1780,15 @@ spam@mail.com"></textarea>
 
         // Close modal on overlay click
         document.querySelectorAll('.modal-overlay').forEach(overlay => {
-            overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) {
+            let mouseDownTarget = null;
+            overlay.addEventListener('mousedown', (e) => {
+                mouseDownTarget = e.target;
+            });
+            overlay.addEventListener('mouseup', (e) => {
+                if (e.target === overlay && mouseDownTarget === overlay) {
                     overlay.classList.remove('active');
                 }
+                mouseDownTarget = null;
             });
         });
 
