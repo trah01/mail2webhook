@@ -1062,6 +1062,9 @@ spam@mail.com"></textarea>
                                 id="btn-test-folders">获取可用文件夹</button>
                         </label>
                         <input type="text" class="form-input" id="account-folders" placeholder="INBOX, Sent">
+                        <div id="folder-checkboxes"
+                            style="display: none; margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 6px; border: 1px solid var(--border-color); gap: 8px; flex-wrap: wrap; max-height: 200px; overflow-y: auto;">
+                        </div>
                     </div>
                     <div class="form-group">
                         <label class="form-checkbox">
@@ -1071,9 +1074,14 @@ spam@mail.com"></textarea>
                     </div>
                 </form>
             </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('account-modal')">取消</button>
-                <button class="btn btn-primary" onclick="saveAccount()">保存</button>
+            <div class="modal-footer" style="display: flex; justify-content: space-between;">
+                <div>
+                    <button class="btn btn-secondary" onclick="testAccountConnectionModal()">测试连接</button>
+                </div>
+                <div>
+                    <button class="btn btn-secondary" onclick="closeModal('account-modal')">取消</button>
+                    <button class="btn btn-primary" onclick="saveAccount()">保存</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1348,6 +1356,7 @@ spam@mail.com"></textarea>
                         </span>
                     </td>
                     <td>
+                        <button class="btn btn-secondary btn-sm" onclick="testAccountConnectionInList('${acc.id}')">测试</button>
                         <button class="btn btn-secondary btn-sm" onclick="editAccount('${acc.id}')">编辑</button>
                         <button class="btn btn-danger btn-sm" onclick="deleteAccount('${acc.id}')">删除</button>
                     </td>
@@ -1356,6 +1365,8 @@ spam@mail.com"></textarea>
         }
 
         function openAccountModal(data = null) {
+            document.getElementById('folder-checkboxes').style.display = 'none';
+            document.getElementById('folder-checkboxes').innerHTML = '';
             document.getElementById('account-modal-title').textContent = data ? '编辑邮箱账号' : '添加邮箱账号';
             document.getElementById('account-id').value = data?.id || '';
             document.getElementById('account-name').value = data?.name || '';
@@ -1435,7 +1446,7 @@ spam@mail.com"></textarea>
         async function testAccountFolders() {
             const btn = document.getElementById('btn-test-folders');
             const originalText = btn.textContent;
-            btn.textContent = '连接中...';
+            btn.textContent = '获取中...';
             btn.disabled = true;
 
             try {
@@ -1444,14 +1455,86 @@ spam@mail.com"></textarea>
                 if (res.error) {
                     alert('获取失败: ' + res.error);
                 } else if (res.folders) {
-                    const foldersList = res.folders.join('\n');
-                    alert(`连接成功！\n此邮箱账号共有 ${res.folders.length} 个文件夹：\n\n${foldersList}\n\n您可以将需要的文件夹名称填入输入框中，多个请用逗号分隔。`);
+                    const container = document.getElementById('folder-checkboxes');
+                    container.style.display = 'flex';
+                    container.innerHTML = '';
+
+                    const currentSelected = document.getElementById('account-folders').value
+                        .split(',')
+                        .map(s => s.trim())
+                        .filter(s => s);
+
+                    res.folders.forEach(folder => {
+                        const isChecked = currentSelected.includes(folder);
+                        const label = document.createElement('label');
+                        label.className = 'form-checkbox';
+                        label.style.margin = '0';
+                        label.style.padding = '6px 10px';
+                        label.style.background = 'var(--bg-primary)';
+                        label.style.borderRadius = '4px';
+                        label.style.border = '1px solid var(--border-color)';
+
+                        const input = document.createElement('input');
+                        input.type = 'checkbox';
+                        input.value = folder;
+                        input.checked = isChecked;
+                        input.onchange = (e) => {
+                            const selected = new Set(
+                                document.getElementById('account-folders').value
+                                    .split(',')
+                                    .map(s => s.trim())
+                                    .filter(s => s)
+                            );
+                            if (e.target.checked) {
+                                selected.add(e.target.value);
+                            } else {
+                                selected.delete(e.target.value);
+                            }
+                            document.getElementById('account-folders').value = Array.from(selected).join(', ');
+                        };
+
+                        const span = document.createElement('span');
+                        span.textContent = folder;
+
+                        label.appendChild(input);
+                        label.appendChild(span);
+                        container.appendChild(label);
+                    });
                 }
             } catch (e) {
                 alert('网络或服务异常: ' + e.message);
             } finally {
                 btn.textContent = originalText;
                 btn.disabled = false;
+            }
+        }
+
+        async function testAccountConnectionModal() {
+            try {
+                const data = getAccountFormData();
+                const res = await api('POST', '/api/test-imap', data);
+                if (res.error) {
+                    alert('连接测试失败: ' + res.error);
+                } else {
+                    alert('当前配置连接测试成功！');
+                }
+            } catch (e) {
+                alert('网络异常: ' + e.message);
+            }
+        }
+
+        async function testAccountConnectionInList(id) {
+            const acc = accounts.find(a => a.id === id);
+            if (!acc) return;
+            try {
+                const res = await api('POST', '/api/test-imap', acc);
+                if (res.error) {
+                    alert('连接测试失败: ' + res.error);
+                } else {
+                    alert('账号连接测试成功！');
+                }
+            } catch (e) {
+                alert('网络异常: ' + e.message);
             }
         }
 

@@ -119,13 +119,17 @@ var (
 )
 
 const (
-	ConfigFile = "config.json"
-	DBFile     = "messages.db"
+	ConfigFile = "data/config.json"
+	DBFile     = "data/messages.db"
 )
 
 // ===================== 数据库操作 =====================
 
 func initDB() {
+	if err := os.MkdirAll("data", 0755); err != nil {
+		log.Fatal("Failed to create user data directory:", err)
+	}
+
 	var err error
 	db, err = sql.Open("sqlite", DBFile)
 	if err != nil {

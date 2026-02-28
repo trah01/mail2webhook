@@ -11,6 +11,7 @@ mail2webhook
 *.app
 
 # Environments and Secrets
+data/
 config.json
 .env
 .last_email_id

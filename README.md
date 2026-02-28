@@ -23,9 +23,9 @@
 
 你可以直接使用预构建的 Docker 镜像一键启动服务。
 
-1. 创建空的 `config.json` 配置文件：
+1. 创建数据目录：
    ```bash
-   touch config.json
+   mkdir -p data
    ```
 
 2. 运行容器:
@@ -33,8 +33,7 @@
    docker run -d \
      --name mail2webhook \
      -p 8080:8080 \
-     -v $(pwd)/config.json:/app/config.json \
-     -v $(pwd)/messages.db:/app/messages.db \
+     -v $(pwd)/data:/app/data \
      -e TZ=Asia/Shanghai \
      --restart unless-stopped \
      trah01/mail2webhook:latest
@@ -84,9 +83,9 @@ A lightweight, concurrent email forwarding bot written in Go. Forwards IMAP emai
 
 You can run the service directly using the pre-built Docker image.
 
-1. Create an empty `config.json` file:
+1. Create a data directory:
    ```bash
-   touch config.json
+   mkdir -p data
    ```
 
 2. Run the container:
@@ -94,8 +93,7 @@ You can run the service directly using the pre-built Docker image.
    docker run -d \
      --name mail2webhook \
      -p 8080:8080 \
-     -v $(pwd)/config.json:/app/config.json \
-     -v $(pwd)/messages.db:/app/messages.db \
+     -v $(pwd)/data:/app/data \
      -e TZ=Asia/Shanghai \
      --restart unless-stopped \
      trah01/mail2webhook:latest

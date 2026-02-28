@@ -10,3 +10,4 @@ messages.db-shm
 messages.db-wal
 config.json
 .DS_Store
+data/

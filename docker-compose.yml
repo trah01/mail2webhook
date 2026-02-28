@@ -7,8 +7,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./config.json:/app/config.json
-      - ./messages.db:/app/messages.db
+      - ./data:/app/data
     environment:
       - TZ=Asia/Shanghai  # 设置时区，确保日志和定时任务时间准确
     restart: unless-stopped
