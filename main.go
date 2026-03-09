@@ -412,6 +412,26 @@ func shouldProcessEmail(account *EmailAccount, fromAddr string, fromName string)
 	}
 }
 
+func normalizeFolderKey(folder string) string {
+	folder = strings.TrimSpace(folder)
+	if folder == "" {
+		return "inbox"
+	}
+	replacer := strings.NewReplacer("/", "_", "\\", "_", " ", "_", ".", "_")
+	return strings.ToLower(replacer.Replace(folder))
+}
+
+func buildMessageID(accountID string, folder string, uid uint32) string {
+	return fmt.Sprintf("%s-%s-%d", accountID, normalizeFolderKey(folder), uid)
+}
+
+func displaySubject(subject string) string {
+	if strings.TrimSpace(subject) == "" {
+		return "(无主题)"
+	}
+	return subject
+}
+
 func checkMailForAccount(account *EmailAccount) {
 	if !account.Enabled {
 		return
@@ -466,10 +486,12 @@ func checkMailForAccount(account *EmailAccount) {
 		}
 
 		for _, uid := range uids {
+			msgID := buildMessageID(account.ID, folder, uid)
+
 			// 检查是否已处理
 			var count int
 			db.QueryRow(`SELECT COUNT(*) FROM messages WHERE id = ?`,
-				fmt.Sprintf("%s-%d", account.ID, uid)).Scan(&count)
+				msgID).Scan(&count)
 			if count > 0 {
 				continue
 			}
@@ -499,7 +521,6 @@ func checkMailForAccount(account *EmailAccount) {
 			// 只处理最近 3 分钟内的邮件，防止一堆很久以前的未读邮件突然发过来
 			if time.Since(msg.Envelope.Date) > 3*time.Minute {
 				// 写入数据库标记为 ignored，防止下次循环重新 fetch envelope
-				msgID := fmt.Sprintf("%s-%d", account.ID, uid)
 				db.Exec(`INSERT OR IGNORE INTO messages (id, account_id, status, created_at) VALUES (?, ?, 'ignored', ?)`, msgID, account.ID, time.Now())
 				continue
 			}
@@ -514,7 +535,6 @@ func checkMailForAccount(account *EmailAccount) {
 			// 过滤检查
 			if !shouldProcessEmail(account, from, fromName) {
 				// 不匹配白名单/黑名单的邮件也标记为 ignored，防止反复被拉回来查
-				msgID := fmt.Sprintf("%s-%d", account.ID, uid)
 				db.Exec(`INSERT OR IGNORE INTO messages (id, account_id, status, created_at) VALUES (?, ?, 'ignored', ?)`, msgID, account.ID, time.Now())
 				continue
 			}
@@ -561,7 +581,6 @@ func checkMailForAccount(account *EmailAccount) {
 			}
 
 			// 存储消息
-			msgID := fmt.Sprintf("%s-%d", account.ID, uid)
 			newMsg := &Message{
 				ID:          msgID,
 				SourceEmail: account.EmailUser,
@@ -581,7 +600,7 @@ func checkMailForAccount(account *EmailAccount) {
 				continue
 			}
 
-			addLog(fmt.Sprintf("收到新邮件 [%s]: %s", account.Name, msg.Envelope.Subject), "success")
+			addLog(fmt.Sprintf("收到新邮件 [%s/%s]: %s", account.Name, folder, displaySubject(msg.Envelope.Subject)), "success")
 
 			// 标记已读
 			c.UidStore(seqSet, imap.AddFlags, []interface{}{imap.SeenFlag}, nil)
@@ -884,6 +903,7 @@ func processPendingMessages() {
 			// 发送
 			var sendErr error
 			dateStr := msg.Date.Format("2006-01-02 15:04:05")
+			subjectForSend := displaySubject(msg.Subject)
 
 			// 智能提取验证码并高亮前置
 			displayBody := msg.Body
@@ -900,24 +920,24 @@ func processPendingMessages() {
 
 			switch webhook.Type {
 			case "feishu":
-				sendErr = sendToFeishu(webhook.URL, msg.Subject, msg.From, dateStr, displayBody)
+				sendErr = sendToFeishu(webhook.URL, subjectForSend, msg.From, dateStr, displayBody)
 			case "dingtalk":
-				sendErr = sendToDingTalk(webhook.URL, msg.Subject, msg.From, dateStr, displayBody)
+				sendErr = sendToDingTalk(webhook.URL, subjectForSend, msg.From, dateStr, displayBody)
 			case "wecom":
-				sendErr = sendToWeCom(webhook.URL, msg.Subject, msg.From, dateStr, displayBody)
+				sendErr = sendToWeCom(webhook.URL, subjectForSend, msg.From, dateStr, displayBody)
 			case "slack":
-				sendErr = sendToSlack(webhook.URL, msg.Subject, msg.From, dateStr, displayBody)
+				sendErr = sendToSlack(webhook.URL, subjectForSend, msg.From, dateStr, displayBody)
 			case "discord":
-				sendErr = sendToDiscord(webhook.URL, msg.Subject, msg.From, dateStr, displayBody)
+				sendErr = sendToDiscord(webhook.URL, subjectForSend, msg.From, dateStr, displayBody)
 			case "custom":
-				sendErr = sendToCustomWebhook(webhook.URL, msg.Subject, msg.From, dateStr, displayBody)
+				sendErr = sendToCustomWebhook(webhook.URL, subjectForSend, msg.From, dateStr, displayBody)
 			}
 
 			if sendErr != nil {
 				msg.RetryCount++
 				msg.ErrorMessage = sendErr.Error()
 				saveMessage(&msg)
-				addLog(fmt.Sprintf("发送失败 [%s -> %s]: %v", msg.Subject, webhook.Name, sendErr), "error")
+				addLog(fmt.Sprintf("发送失败 [%s -> %s]: %v", subjectForSend, webhook.Name, sendErr), "error")
 			} else {
 				msg.Status = "sent"
 				msg.TargetType = webhook.Type
@@ -925,7 +945,7 @@ func processPendingMessages() {
 				now := time.Now()
 				msg.SentAt = &now
 				saveMessage(&msg)
-				addLog(fmt.Sprintf("转发成功 [%s -> %s]", msg.Subject, webhook.Name), "success")
+				addLog(fmt.Sprintf("转发成功 [%s -> %s]", subjectForSend, webhook.Name), "success")
 			}
 		}
 	}
