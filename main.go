@@ -116,6 +116,7 @@ var (
 	codeRegex        = regexp.MustCompile(`(?i)(?:验证码|校验码|动态码|验证|确认码|verification code|security code|auth code|\bcode\b)[\s:：\-\[【]*([a-zA-Z0-9]{4,8})\b`)
 	accountLastCheck sync.Map                                  // 记录每个账号最后的检查时间
 	accountChecking  sync.Map                                  // 防止同一个账号的 IMAP 检查并发
+	folderFirstSeen  sync.Map                                  // 记录每个账号-文件夹组合首次扫描的时间基线
 	processingMutex  sync.Mutex                                // 防止并发处理待发送消息
 	httpClient       = &http.Client{Timeout: 15 * time.Second} // 全局 Webhook 请求带超时的客户端
 )
@@ -446,7 +447,19 @@ func checkMailForAccount(account *EmailAccount) {
 	// 记录最后检查时间而不是频繁刷屏日志
 	accountLastCheck.Store(account.ID, time.Now().Format("2006-01-02 15:04:05"))
 
-	// 自动添加默认端口993
+	folders := account.Folders
+	if len(folders) == 0 {
+		folders = []string{"INBOX"}
+	}
+
+	// 每个文件夹独立建立 IMAP 连接，避免 Select 切换导致 UID 操作错乱
+	for _, folder := range folders {
+		checkFolderForAccount(account, folder)
+	}
+}
+
+// connectIMAP 建立 IMAP 连接并登录，返回客户端和错误
+func connectIMAP(account *EmailAccount) (*client.Client, error) {
 	imapServer := account.ImapServer
 	if !strings.Contains(imapServer, ":") {
 		imapServer = imapServer + ":993"
@@ -455,156 +468,168 @@ func checkMailForAccount(account *EmailAccount) {
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	c, err := client.DialWithDialerTLS(dialer, imapServer, nil)
 	if err != nil {
-		addLog(fmt.Sprintf("IMAP连接失败 [%s]: %v", account.Name, err), "error")
+		return nil, fmt.Errorf("IMAP连接失败: %w", err)
+	}
+
+	if err := c.Login(account.EmailUser, account.EmailPass); err != nil {
+		c.Logout()
+		return nil, fmt.Errorf("IMAP登录失败: %w", err)
+	}
+	return c, nil
+}
+
+// checkFolderForAccount 检查单个文件夹的新邮件，使用独立的 IMAP 连接
+func checkFolderForAccount(account *EmailAccount, folder string) {
+	c, err := connectIMAP(account)
+	if err != nil {
+		addLog(fmt.Sprintf("[%s/%s] %v", account.Name, folder, err), "error")
 		return
 	}
 	defer c.Logout()
 
-	if err := c.Login(account.EmailUser, account.EmailPass); err != nil {
-		addLog(fmt.Sprintf("IMAP登录失败 [%s]: %v", account.Name, err), "error")
+	_, err = c.Select(folder, false)
+	if err != nil {
+		addLog(fmt.Sprintf("选择文件夹失败 [%s/%s]: %v", account.Name, folder, err), "error")
 		return
 	}
 
-	folders := account.Folders
-	if len(folders) == 0 {
-		folders = []string{"INBOX"}
+	// 首次扫描该文件夹时，记录启动基线时间（防止大量历史邮件涌入）
+	folderKey := fmt.Sprintf("%s:%s", account.ID, folder)
+	if _, hasBaseline := folderFirstSeen.Load(folderKey); !hasBaseline {
+		folderFirstSeen.Store(folderKey, time.Now())
+	}
+	baseline, _ := folderFirstSeen.Load(folderKey)
+	baselineTime := baseline.(time.Time)
+
+	criteria := imap.NewSearchCriteria()
+	criteria.WithoutFlags = []string{imap.SeenFlag}
+	uids, _ := c.UidSearch(criteria)
+
+	limit := 10
+	if len(uids) > limit {
+		uids = uids[len(uids)-limit:]
 	}
 
-	for _, folder := range folders {
-		_, err := c.Select(folder, false)
+	for _, uid := range uids {
+		msgID := buildMessageID(account.ID, folder, uid)
+
+		// 检查是否已处理
+		var count int
+		db.QueryRow(`SELECT COUNT(*) FROM messages WHERE id = ?`,
+			msgID).Scan(&count)
+		if count > 0 {
+			continue
+		}
+
+		seqSet := new(imap.SeqSet)
+		seqSet.AddNum(uid)
+
+		var section imap.BodySectionName
+		items := []imap.FetchItem{section.FetchItem(), imap.FetchEnvelope}
+		messages := make(chan *imap.Message, 1)
+
+		go func() {
+			c.UidFetch(seqSet, items, messages)
+		}()
+
+		var msg *imap.Message
+		for m := range messages {
+			if msg == nil {
+				msg = m // 获取第一个拿去处理，剩下的强行消费完（防止 IMAP Server 返回多个对象导致 Channel 卡死 goroutine 泄露）
+			}
+		}
+
+		if msg == nil || msg.Envelope == nil {
+			continue
+		}
+
+		from := ""
+		fromName := ""
+		if len(msg.Envelope.From) > 0 {
+			from = msg.Envelope.From[0].Address()
+			fromName = msg.Envelope.From[0].PersonalName
+		}
+
+		// 忽略基线时刻之前的旧未读邮件
+		if msg.Envelope.Date.Before(baselineTime) {
+			db.Exec(`INSERT OR IGNORE INTO messages (id, source_email, account_id, subject, from_addr, date, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'ignored', ?)`,
+				msgID, account.EmailUser, account.ID, msg.Envelope.Subject, from, msg.Envelope.Date, time.Now())
+			continue
+		}
+
+		// 过滤检查
+		if !shouldProcessEmail(account, from, fromName) {
+			// 不匹配白名单/黑名单的邮件也标记为 ignored，防止反复被拉回来查
+			db.Exec(`INSERT OR IGNORE INTO messages (id, source_email, account_id, subject, from_addr, date, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'ignored', ?)`,
+				msgID, account.EmailUser, account.ID, msg.Envelope.Subject, from, msg.Envelope.Date, time.Now())
+			continue
+		}
+
+		r := msg.GetBody(&section)
+		if r == nil {
+			continue
+		}
+		mr, err := mail.CreateReader(r)
 		if err != nil {
 			continue
 		}
 
-		criteria := imap.NewSearchCriteria()
-		criteria.WithoutFlags = []string{imap.SeenFlag}
-		uids, _ := c.UidSearch(criteria)
-
-		limit := 10
-		if len(uids) > limit {
-			uids = uids[len(uids)-limit:]
-		}
-
-		for _, uid := range uids {
-			msgID := buildMessageID(account.ID, folder, uid)
-
-			// 检查是否已处理
-			var count int
-			db.QueryRow(`SELECT COUNT(*) FROM messages WHERE id = ?`,
-				msgID).Scan(&count)
-			if count > 0 {
-				continue
+		var body, bodyHTML string
+		for {
+			p, err := mr.NextPart()
+			if err == io.EOF {
+				break
 			}
-
-			seqSet := new(imap.SeqSet)
-			seqSet.AddNum(uid)
-
-			var section imap.BodySectionName
-			items := []imap.FetchItem{section.FetchItem(), imap.FetchEnvelope}
-			messages := make(chan *imap.Message, 1)
-
-			go func() {
-				c.UidFetch(seqSet, items, messages)
-			}()
-
-			var msg *imap.Message
-			for m := range messages {
-				if msg == nil {
-					msg = m // 获取第一个拿去处理，剩下的强行消费完（防止 IMAP Server 返回多个对象导致 Channel 卡死 goroutine 泄露）
-				}
-			}
-
-			if msg == nil || msg.Envelope == nil {
-				continue
-			}
-
-			// 只处理最近 3 分钟内的邮件，防止一堆很久以前的未读邮件突然发过来
-			if time.Since(msg.Envelope.Date) > 3*time.Minute {
-				// 写入数据库标记为 ignored，防止下次循环重新 fetch envelope
-				db.Exec(`INSERT OR IGNORE INTO messages (id, account_id, status, created_at) VALUES (?, ?, 'ignored', ?)`, msgID, account.ID, time.Now())
-				continue
-			}
-
-			from := ""
-			fromName := ""
-			if len(msg.Envelope.From) > 0 {
-				from = msg.Envelope.From[0].Address()
-				fromName = msg.Envelope.From[0].PersonalName
-			}
-
-			// 过滤检查
-			if !shouldProcessEmail(account, from, fromName) {
-				// 不匹配白名单/黑名单的邮件也标记为 ignored，防止反复被拉回来查
-				db.Exec(`INSERT OR IGNORE INTO messages (id, account_id, status, created_at) VALUES (?, ?, 'ignored', ?)`, msgID, account.ID, time.Now())
-				continue
-			}
-
-			r := msg.GetBody(&section)
-			if r == nil {
-				continue
-			}
-			mr, err := mail.CreateReader(r)
 			if err != nil {
-				continue
+				break
 			}
 
-			var body, bodyHTML string
-			for {
-				p, err := mr.NextPart()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					break
-				}
-
-				switch h := p.Header.(type) {
-				case *mail.InlineHeader:
-					contentType, _, _ := h.ContentType()
-					b, _ := io.ReadAll(p.Body)
-					if contentType == "text/html" {
-						bodyHTML = string(b)
-						body = cleanHTML(string(b))
-					} else if contentType == "text/plain" && body == "" {
-						body = urlRegex.ReplaceAllStringFunc(string(b), func(u string) string {
-							disp := u
-							if len(disp) > 80 {
-								disp = disp[:77] + "..."
-							}
-							if len(u) > 600 {
-								return fmt.Sprintf("[%s](长链接由于超长已被过滤)", disp)
-							}
-							return fmt.Sprintf("[%s](%s)", disp, u)
-						})
-					}
+			switch h := p.Header.(type) {
+			case *mail.InlineHeader:
+				contentType, _, _ := h.ContentType()
+				b, _ := io.ReadAll(p.Body)
+				if contentType == "text/html" {
+					bodyHTML = string(b)
+					body = cleanHTML(string(b))
+				} else if contentType == "text/plain" && body == "" {
+					body = urlRegex.ReplaceAllStringFunc(string(b), func(u string) string {
+						disp := u
+						if len(disp) > 80 {
+							disp = disp[:77] + "..."
+						}
+						if len(u) > 600 {
+							return fmt.Sprintf("[%s](长链接由于超长已被过滤)", disp)
+						}
+						return fmt.Sprintf("[%s](%s)", disp, u)
+					})
 				}
 			}
-
-			// 存储消息
-			newMsg := &Message{
-				ID:          msgID,
-				SourceEmail: account.EmailUser,
-				AccountID:   account.ID,
-				Subject:     msg.Envelope.Subject,
-				From:        from,
-				To:          account.EmailUser,
-				Date:        msg.Envelope.Date,
-				Body:        body,
-				BodyHTML:    bodyHTML,
-				Status:      "pending",
-				CreatedAt:   time.Now(),
-			}
-
-			if err := saveMessage(newMsg); err != nil {
-				addLog(fmt.Sprintf("保存消息失败: %v", err), "error")
-				continue
-			}
-
-			addLog(fmt.Sprintf("收到新邮件 [%s/%s]: %s", account.Name, folder, displaySubject(msg.Envelope.Subject)), "success")
-
-			// 标记已读
-			c.UidStore(seqSet, imap.AddFlags, []interface{}{imap.SeenFlag}, nil)
 		}
+
+		// 存储消息
+		newMsg := &Message{
+			ID:          msgID,
+			SourceEmail: account.EmailUser,
+			AccountID:   account.ID,
+			Subject:     msg.Envelope.Subject,
+			From:        from,
+			To:          account.EmailUser,
+			Date:        msg.Envelope.Date,
+			Body:        body,
+			BodyHTML:    bodyHTML,
+			Status:      "pending",
+			CreatedAt:   time.Now(),
+		}
+
+		if err := saveMessage(newMsg); err != nil {
+			addLog(fmt.Sprintf("保存消息失败: %v", err), "error")
+			continue
+		}
+
+		addLog(fmt.Sprintf("收到新邮件 [%s/%s]: %s", account.Name, folder, displaySubject(msg.Envelope.Subject)), "success")
+
+		// 标记已读
+		c.UidStore(seqSet, imap.AddFlags, []interface{}{imap.SeenFlag}, nil)
 	}
 }
 
