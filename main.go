@@ -503,7 +503,11 @@ func checkFolderForAccount(account *EmailAccount, folder string) {
 
 	criteria := imap.NewSearchCriteria()
 	criteria.WithoutFlags = []string{imap.SeenFlag}
-	uids, _ := c.UidSearch(criteria)
+	uids, searchErr := c.UidSearch(criteria)
+	if searchErr != nil {
+		addLog(fmt.Sprintf("搜索未读邮件失败 [%s/%s]: %v", account.Name, folder, searchErr), "error")
+		return
+	}
 
 	limit := 10
 	if len(uids) > limit {
@@ -525,7 +529,7 @@ func checkFolderForAccount(account *EmailAccount, folder string) {
 		seqSet.AddNum(uid)
 
 		var section imap.BodySectionName
-		items := []imap.FetchItem{section.FetchItem(), imap.FetchEnvelope}
+		items := []imap.FetchItem{section.FetchItem(), imap.FetchEnvelope, imap.FetchInternalDate}
 		messages := make(chan *imap.Message, 1)
 
 		go func() {
@@ -550,8 +554,13 @@ func checkFolderForAccount(account *EmailAccount, folder string) {
 			fromName = msg.Envelope.From[0].PersonalName
 		}
 
-		// 忽略基线时刻之前的旧未读邮件
-		if msg.Envelope.Date.Before(baselineTime) {
+		// 忽略基线时刻之前的旧未读邮件（使用 IMAP InternalDate 即服务器收件时间，
+		// 而非 Envelope.Date，因为自动通知邮件的 Date 头可能远早于实际投递时间）
+		receivedTime := msg.InternalDate
+		if receivedTime.IsZero() {
+			receivedTime = msg.Envelope.Date // 兜底
+		}
+		if receivedTime.Before(baselineTime) {
 			db.Exec(`INSERT OR IGNORE INTO messages (id, source_email, account_id, subject, from_addr, date, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'ignored', ?)`,
 				msgID, account.EmailUser, account.ID, msg.Envelope.Subject, from, msg.Envelope.Date, time.Now())
 			continue
@@ -898,7 +907,8 @@ func processPendingMessages() {
 			continue
 		}
 
-		// 匹配规则
+		// 匹配规则，找到第一条匹配的规则进行发送
+		ruleMatched := false
 		for _, rule := range rules {
 			// 检查源账号匹配
 			if rule.SourceAccount != "all" && rule.SourceAccount != msg.AccountID {
@@ -924,6 +934,8 @@ func processPendingMessages() {
 			if !ok || !webhook.Enabled {
 				continue
 			}
+
+			ruleMatched = true
 
 			// 发送
 			var sendErr error
@@ -972,6 +984,15 @@ func processPendingMessages() {
 				saveMessage(&msg)
 				addLog(fmt.Sprintf("转发成功 [%s -> %s]", subjectForSend, webhook.Name), "success")
 			}
+			break // 匹配到第一条规则并尝试发送后，不再继续匹配后续规则
+		}
+
+		// 没有匹配到任何转发规则的消息，标记为 no_rule 防止永远卡在 pending 堵塞队列
+		if !ruleMatched {
+			msg.Status = "no_rule"
+			msg.ErrorMessage = fmt.Sprintf("没有匹配的转发规则 (account_id=%s)", msg.AccountID)
+			saveMessage(&msg)
+			addLog(fmt.Sprintf("消息无匹配规则 [%s] account=%s", displaySubject(msg.Subject), msg.AccountID), "warning")
 		}
 	}
 }
