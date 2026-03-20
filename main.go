@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
@@ -357,30 +358,48 @@ func addLog(msg string, logType string) {
 func cleanHTML(htmlStr string) string {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlStr))
 	if err != nil {
-		return htmlStr
+		return normalizeFormattedText(htmlStr)
 	}
-	doc.Find("script, style, head, title, meta").Each(func(i int, s *goquery.Selection) {
+	doc.Find("script, style, head, title, meta, noscript").Each(func(i int, s *goquery.Selection) {
 		s.Remove()
 	})
+
+	doc.Find("br").Each(func(i int, s *goquery.Selection) {
+		s.ReplaceWithHtml("\n")
+	})
+
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
 		href, _ := s.Attr("href")
 		text := strings.TrimSpace(s.Text())
+		href = sanitizeURL(href)
+		if text == "" {
+			text = "链接"
+		} else if len(text) > 80 {
+			text = text[:77] + "..."
+		}
+		text = escapeMarkdownText(text)
 		if href != "" {
-			if text == "" {
-				text = "链接"
-			} else if len(text) > 80 {
-				text = text[:77] + "..."
-			}
-
+			href = escapeMarkdownLinkURL(href)
 			if len(href) > 600 {
 				s.SetText(fmt.Sprintf("[%s](长链接由于超长已被过滤)", text))
 			} else {
 				s.SetText(fmt.Sprintf("[%s](%s)", text, href))
 			}
+		} else {
+			s.SetText(text)
 		}
 	})
 
-	text := strings.TrimSpace(doc.Text())
+	doc.Find("li").Each(func(i int, s *goquery.Selection) {
+		s.PrependHtml("- ")
+		s.AppendHtml("\n")
+	})
+
+	doc.Find("p,div,section,article,header,footer,blockquote,pre,h1,h2,h3,h4,h5,h6,tr,table").Each(func(i int, s *goquery.Selection) {
+		s.AppendHtml("\n\n")
+	})
+
+	text := normalizeFormattedText(doc.Text())
 	text = urlRegex.ReplaceAllStringFunc(text, func(u string) string {
 		if len(u) > 600 {
 			return u[:80] + "...(该段长链接由于超长已被过滤)"
@@ -388,6 +407,95 @@ func cleanHTML(htmlStr string) string {
 		return u
 	})
 	return text
+}
+
+func sanitizeURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	if u.Scheme != "" {
+		scheme := strings.ToLower(u.Scheme)
+		if scheme != "http" && scheme != "https" {
+			return ""
+		}
+	}
+	q := u.Query()
+	for key := range q {
+		k := strings.ToLower(key)
+		if strings.HasPrefix(k, "utm_") || k == "fbclid" || k == "gclid" || k == "mc_cid" || k == "mc_eid" || k == "spm" {
+			q.Del(key)
+		}
+	}
+	u.RawQuery = q.Encode()
+	if u.Path != "" {
+		u.Path = u.EscapedPath()
+	}
+	return u.String()
+}
+
+func escapeMarkdownText(text string) string {
+	replacer := strings.NewReplacer(
+		`\\`, `\\\\`,
+		`[`, `\\[`,
+		`]`, `\\]`,
+		`(`, `\\(`,
+		`)`, `\\)`,
+		"`", "\\`",
+		"*", "\\*",
+		"_", "\\_",
+	)
+	return replacer.Replace(text)
+}
+
+func escapeMarkdownLinkURL(raw string) string {
+	return strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(raw)
+}
+
+func normalizeFormattedText(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	lines := strings.Split(text, "\n")
+	result := make([]string, 0, len(lines))
+	blankCount := 0
+	firstContentLine := true
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			blankCount++
+			if blankCount <= 1 {
+				result = append(result, "")
+			}
+			continue
+		}
+		blankCount = 0
+		if firstContentLine {
+			line = "  " + line
+			firstContentLine = false
+		}
+		result = append(result, line)
+	}
+	joined := strings.Join(result, "\n")
+	return strings.Trim(joined, "\n")
+}
+
+func formatPlainTextBody(body string) string {
+	body = urlRegex.ReplaceAllStringFunc(body, func(u string) string {
+		disp := u
+		if len(disp) > 80 {
+			disp = disp[:77] + "..."
+		}
+		u = escapeMarkdownLinkURL(u)
+		if len(u) > 600 {
+			return fmt.Sprintf("[%s](长链接由于超长已被过滤)", disp)
+		}
+		return fmt.Sprintf("[%s](%s)", disp, u)
+	})
+	return normalizeFormattedText(body)
 }
 
 func shouldProcessEmail(account *EmailAccount, fromAddr string, fromName string) bool {
@@ -601,16 +709,7 @@ func checkFolderForAccount(account *EmailAccount, folder string) {
 					bodyHTML = string(b)
 					body = cleanHTML(string(b))
 				} else if contentType == "text/plain" && body == "" {
-					body = urlRegex.ReplaceAllStringFunc(string(b), func(u string) string {
-						disp := u
-						if len(disp) > 80 {
-							disp = disp[:77] + "..."
-						}
-						if len(u) > 600 {
-							return fmt.Sprintf("[%s](长链接由于超长已被过滤)", disp)
-						}
-						return fmt.Sprintf("[%s](%s)", disp, u)
-					})
+					body = formatPlainTextBody(string(b))
 				}
 			}
 		}
