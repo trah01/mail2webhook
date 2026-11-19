@@ -497,12 +497,18 @@ func setupAPI(r *gin.Engine) {
 		switch webhook.Type {
 		case "feishu":
 			err = sendToFeishu(webhook.URL, "测试消息", "test@test.com", time.Now().Format("2006-01-02"), "这是一条测试消息")
+		case "dingtalk":
+			err = sendToDingTalk(webhook.URL, "测试消息", "test@test.com", time.Now().Format("2006-01-02"), "这是一条测试消息")
+		case "wecom":
+			err = sendToWeCom(webhook.URL, "测试消息", "test@test.com", time.Now().Format("2006-01-02"), "这是一条测试消息")
 		case "slack":
 			err = sendToSlack(webhook.URL, "测试消息", "test@test.com", time.Now().Format("2006-01-02"), "这是一条测试消息")
 		case "discord":
 			err = sendToDiscord(webhook.URL, "测试消息", "test@test.com", time.Now().Format("2006-01-02"), "这是一条测试消息")
 		case "custom":
 			err = sendToCustomWebhook(webhook.URL, "测试消息", "test@test.com", time.Now().Format("2006-01-02"), "这是一条测试消息")
+		default:
+			err = fmt.Errorf("不支持的 Webhook 类型: %s", webhook.Type)
 		}
 
 		if err != nil {

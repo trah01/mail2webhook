@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -200,11 +201,7 @@ func sendToDingTalk(webhookURL, subject, from, date, body string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-	return nil
+	return checkErrcodeResponse(resp)
 }
 
 func sendToWeCom(webhookURL, subject, from, date, body string) error {
@@ -225,9 +222,24 @@ func sendToWeCom(webhookURL, subject, from, date, body string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	return checkErrcodeResponse(resp)
+}
+
+// 钉钉和企业微信出错时也返回 HTTP 200，需要检查响应体中的 errcode
+func checkErrcodeResponse(resp *http.Response) error {
+	bodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+	}
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return fmt.Errorf("响应解析失败: %s", string(bodyBytes))
+	}
+	if result.ErrCode != 0 {
+		return fmt.Errorf("errcode %d: %s", result.ErrCode, result.ErrMsg)
 	}
 	return nil
 }
